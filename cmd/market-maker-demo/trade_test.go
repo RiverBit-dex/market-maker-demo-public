@@ -34,7 +34,7 @@ func TestExampleActionFilesParse(t *testing.T) {
 		t.Fatalf("readActions = %d, %v", len(actions), err)
 	}
 	for _, a := range actions {
-		if err := validateActionAsset(a, 0); err != nil {
+		if err := validateActionAsset(a, 1); err != nil {
 			t.Errorf("%T: %v", a, err)
 		}
 	}
@@ -101,7 +101,7 @@ func newFakeGateway(t *testing.T, account string, rest bool) *fakeGateway {
 			}
 			fmt.Fprintf(w, `{"role":"agent","data":{"user":%q}}`, testLeader)
 		case "metaAndAssetCtxs":
-			fmt.Fprint(w, `[{"universe":[{"name":"RBT","szDecimals":2,"maxLeverage":20}]},[]]`)
+			fmt.Fprint(w, `[{"universe":[{"name":"RBT","szDecimals":2,"maxLeverage":20},{"name":"BTC","szDecimals":5,"maxLeverage":40}]},[]]`)
 		case "orderStatus", "openOrders":
 			if !rest {
 				t.Errorf("ws mode must reconcile over info_json, got HTTP %s", body)
@@ -124,7 +124,7 @@ func newFakeGateway(t *testing.T, account string, rest bool) *fakeGateway {
 				}
 				return
 			}
-			fmt.Fprint(w, `{"height":3,"status":"order","order":{"status":"open","order":{"coin":"RBT","oid":501}}}`)
+			fmt.Fprint(w, `{"height":3,"status":"order","order":{"status":"open","order":{"coin":"BTC","oid":501}}}`)
 		default:
 			t.Errorf("unexpected info %s", body)
 		}
@@ -245,10 +245,10 @@ func tradeConfig(t *testing.T, binWSURL, gatewayURL, vault, transport string) co
 	if err := os.WriteFile(keyFile, []byte(testKeyHex+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("ACTION_FILE", "../../examples/rbt-batch-order.sample.json")
+	t.Setenv("ACTION_FILE", "../../examples/btc-batch-order.sample.json")
 	return config.Config{
 		BinWSURL: binWSURL, BinWSLoginHost: "pre-api.riverbit.io", APIGatewayURL: gatewayURL,
-		Coin: "RBT", BookStream: "l2", OrderTransport: transport, GuildVault: vault, KeyFile: keyFile, StateDir: filepath.Join(dir, "state"),
+		Coin: "BTC", BookStream: "l2", OrderTransport: transport, GuildVault: vault, KeyFile: keyFile, StateDir: filepath.Join(dir, "state"),
 	}
 }
 
@@ -289,7 +289,7 @@ func TestTradeForVaultOverBinWS(t *testing.T) {
 			}
 			data := `[]`
 			if q.Type == "orderStatus" {
-				data = `{"height":3,"status":"order","order":{"status":"open","order":{"coin":"RBT","oid":501}}}`
+				data = `{"height":3,"status":"order","order":{"status":"open","order":{"coin":"BTC","oid":501}}}`
 			}
 			_ = c.SendJSON(f.ID, fmt.Sprintf(`{"channel":"post","data":{"id":%d,"response":{"type":"info","payload":{"type":%q,"data":%s}}}}`, f.ID, q.Type, data))
 		}

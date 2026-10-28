@@ -10,7 +10,7 @@ import (
 	"github.com/riverbit-dex/market-maker-demo-public/internal/hlexchange"
 )
 
-func TestReadAssetInfoFindsRBTFromInfoResponse(t *testing.T) {
+func TestReadAssetInfoFindsBTCFromInfoResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/info" {
 			t.Fatalf("path = %s, want /info", r.URL.Path)
@@ -22,11 +22,11 @@ func TestReadAssetInfoFindsRBTFromInfoResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	index, decimals, leverage, err := readAssetInfo(context.Background(), client, "RBT")
+	index, decimals, leverage, err := readAssetInfo(context.Background(), client, "BTC")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if index != 0 || decimals != 2 || leverage != 20 {
+	if index != 1 || decimals != 5 || leverage != 40 {
 		t.Fatalf("got index=%d decimals=%d leverage=%d", index, decimals, leverage)
 	}
 }
@@ -34,7 +34,7 @@ func TestReadAssetInfoFindsRBTFromInfoResponse(t *testing.T) {
 func TestBatchModifyRejectsAssetMismatch(t *testing.T) {
 	action := &hlexchange.BatchModify{Type: "batchModify", Modifies: []hlexchange.ModifyItem{{OID: 1, Order: hlexchange.Order{Asset: 1}}}}
 	if err := validateActionAsset(action, 0); err == nil {
-		t.Fatal("expected RBT asset mismatch to fail closed")
+		t.Fatal("expected BTC asset mismatch to fail closed")
 	}
 }
 

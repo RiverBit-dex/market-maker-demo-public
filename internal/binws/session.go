@@ -205,7 +205,7 @@ func (s *Session) write(f ClientFrame) error {
 }
 
 // Subscribe sends subscribe_json with the subscription object itself, e.g.
-// {"type":"l2","c":"RBT"} or {"type":"orderUpdates","user":"0x.."}. The ack
+// {"type":"l2","c":"BTC"} or {"type":"orderUpdates","user":"0x.."}. The ack
 // arrives later through OnFrame as {"channel":"subscriptionResponse",...}.
 func (s *Session) Subscribe(sub any) error   { return s.sendJSON(ClientSubscribe, sub) }
 func (s *Session) Unsubscribe(sub any) error { return s.sendJSON(ClientUnsubscribe, sub) }

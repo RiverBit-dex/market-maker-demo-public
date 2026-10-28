@@ -3,11 +3,11 @@ package config
 import "testing"
 
 func TestDefaultsPointAtBinWS(t *testing.T) {
-	for _, k := range []string{"BIN_WS_URL", "BIN_WS_LOGIN_HOST", "API_GATEWAY_URL", "BOOK_STREAM", "ORDER_TRANSPORT", "WS_URL", "TRADE_WS_URL"} {
+	for _, k := range []string{"BIN_WS_URL", "BIN_WS_LOGIN_HOST", "API_GATEWAY_URL", "COIN", "BOOK_STREAM", "ORDER_TRANSPORT", "WS_URL", "TRADE_WS_URL"} {
 		t.Setenv(k, "")
 	}
 	cfg := Load()
-	if cfg.BinWSURL != "wss://pre-api.riverbit.io/bin-ws" || cfg.BinWSLoginHost != "pre-api.riverbit.io" || cfg.APIGatewayURL != "https://pre-api.riverbit.io" || cfg.BookStream != "l2" || cfg.OrderTransport != "ws" {
+	if cfg.BinWSURL != "wss://pre-api.riverbit.io/bin-ws" || cfg.BinWSLoginHost != "pre-api.riverbit.io" || cfg.APIGatewayURL != "https://pre-api.riverbit.io" || cfg.Coin != "BTC" || cfg.BookStream != "l2" || cfg.OrderTransport != "ws" {
 		t.Fatalf("defaults = %+v", cfg)
 	}
 	if err := cfg.Validate(); err != nil {
