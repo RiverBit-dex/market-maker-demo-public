@@ -15,9 +15,7 @@ import (
 	"io"
 	"log"
 	"math/big"
-	"net"
 	"net/http"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -119,10 +117,7 @@ type Client struct {
 	// for as the vault leader or the leader's agent, not as a master owning a
 	// subaccount. VerifySubAccount then checks vaultRegistry, vaultDetails and
 	// userRole instead.
-	VaultOperator bool
-	// Explicit local-devnet fallback when the Rust HTTP gateway lacks order dispatch.
-	NativeBinary           string
-	NativeEndpoint         string
+	VaultOperator          bool
 	StateDir               string        // Dedicated durable pending requests and public audit records.
 	ReceiptLog             string        // Optional local devnet execution log, read-only.
 	MaxStateAge            time.Duration // Zero uses the runner's normal 60-second limit.
@@ -231,12 +226,6 @@ var signerOperations sync.Map
 func (c *Client) signerOperationLock() *sync.Mutex {
 	value, _ := signerOperations.LoadOrStore(c.SignerAddress(), new(sync.Mutex))
 	return value.(*sync.Mutex)
-}
-func (c *Client) validateTransport() error {
-	if c.account != "" && c.NativeBinary != "" {
-		return fmt.Errorf("native transport does not support subaccounts")
-	}
-	return nil
 }
 
 var signerNonces = struct {
@@ -437,9 +426,6 @@ func (c *Client) Exchange(ctx context.Context, action any) error {
 	lock := c.signerOperationLock()
 	lock.Lock()
 	defer lock.Unlock()
-	if err := c.validateTransport(); err != nil {
-		return err
-	}
 	release, err := c.lockDurableSigner()
 	if err != nil {
 		return err
@@ -458,29 +444,7 @@ func (c *Client) Exchange(ctx context.Context, action any) error {
 	return c.exchangeNonce(ctx, action, n)
 }
 func (c *Client) exchangeNonce(ctx context.Context, action any, n uint64) error {
-	if c.NativeBinary != "" {
-		if c.account != "" {
-			return fmt.Errorf("native transport does not support subaccounts")
-		}
-		host, _, err := net.SplitHostPort(c.NativeEndpoint)
-		if err != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() || c.Mainnet {
-			return fmt.Errorf("native transport requires a loopback devnet endpoint")
-		}
-		data, err := json.Marshal(action)
-		if err != nil {
-			return err
-		}
-		// This devnet CLI only accepts a key argument. Never log argv or command
-		// output (which could expose it); dedicated throwaway accounts only.
-		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
-		cmd := exec.CommandContext(ctx, c.NativeBinary, "--submit-action", c.NativeEndpoint,
-			"--user-key", fmt.Sprintf("%x", crypto.FromECDSA(c.key)), "--action-json", string(data), "--nonce", fmt.Sprint(n))
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("native action submit: %w", err)
-		}
-		return nil // Acceptance is NOT finality; the caller must confirm via /info.
-	}
+
 	digest, err := c.signingDigest(action, n)
 	if err != nil {
 		return err
@@ -752,9 +716,6 @@ func (c *Client) DevnetFaucetForChain(ctx context.Context, chainID uint64) error
 func (c *Client) VerifySubAccount(ctx context.Context) error {
 	if c.account == "" {
 		return nil
-	}
-	if c.NativeBinary != "" {
-		return fmt.Errorf("native transport does not support subaccounts")
 	}
 	if c.VaultOperator {
 		return c.verifyVaultOperator(ctx)

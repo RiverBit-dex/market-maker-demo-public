@@ -442,3 +442,36 @@ func TestBatchReceiptRejectsIncompleteOrAmbiguousEvidence(t *testing.T) {
 		}
 	}
 }
+
+// Removing a transport must not turn its unknown submissions into REST requests.
+func TestRecoverRejectsRemovedNativeTransport(t *testing.T) {
+	for _, tc := range []struct {
+		name, endpoint, transport, wantError string
+	}{
+		{"endpoint", "127.0.0.1:9090", "http", "identity/endpoint mismatch"},
+		{"transport", "", "native:/local/devnet", "transport/network mismatch"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := restVaultClient(t)
+			pending := pendingRequest{
+				Signer: client.SignerAddress(), Account: client.AccountAddress(), URL: client.URL,
+				Endpoint: tc.endpoint, Transport: tc.transport, Nonce: 1,
+				Action: json.RawMessage(`{"type":"order"}`),
+			}
+			raw, err := json.Marshal(pending)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(client.pendingPath(), raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := client.RecoverPending(context.Background()); err == nil || !strings.Contains(err.Error(), tc.wantError) {
+				t.Fatalf("removed transport must fail before reconciliation: %v", err)
+			}
+			retained, err := os.ReadFile(client.pendingPath())
+			if err != nil || string(retained) != string(raw) {
+				t.Fatalf("unknown legacy request must remain unchanged: %s, %v", retained, err)
+			}
+		})
+	}
+}

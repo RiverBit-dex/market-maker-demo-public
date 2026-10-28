@@ -43,11 +43,12 @@ func (c *Client) retirePending(p *pendingRequest, event, detail string) error {
 }
 
 type pendingRequest struct {
-	Signer        string                   `json:"signer,omitempty"`
-	Transport     string                   `json:"transport,omitempty"`
-	Mainnet       bool                     `json:"mainnet,omitempty"`
-	Account       string                   `json:"account"`
-	URL           string                   `json:"url"`
+	Signer    string `json:"signer,omitempty"`
+	Transport string `json:"transport,omitempty"`
+	Mainnet   bool   `json:"mainnet,omitempty"`
+	Account   string `json:"account"`
+	URL       string `json:"url"`
+	// Endpoint is retained only to reject journals from the removed native transport.
 	Endpoint      string                   `json:"endpoint"`
 	Nonce         uint64                   `json:"nonce"`
 	Action        json.RawMessage          `json:"action"`
@@ -80,9 +81,6 @@ func (c *Client) journalIdentity() string {
 func (c *Client) transportIdentity() string {
 	if c.WS != nil {
 		return "binary-ws:" + c.WS.URL()
-	}
-	if c.NativeBinary != "" {
-		return "native:" + c.NativeBinary
 	}
 	return "http"
 }
@@ -117,13 +115,13 @@ func (c *Client) loadPending() (*pendingRequest, error) {
 	if err = json.Unmarshal(b, &p); err != nil {
 		return nil, fmt.Errorf("invalid pending journal: %w", err)
 	}
-	if p.Account != c.AccountAddress() || p.URL != c.URL || p.Endpoint != c.NativeEndpoint || p.Nonce == 0 || !json.Valid(p.Action) {
+	if p.Account != c.AccountAddress() || p.URL != c.URL || p.Endpoint != "" || p.Nonce == 0 || !json.Valid(p.Action) {
 		return nil, fmt.Errorf("pending journal identity/endpoint mismatch or invalid request")
 	}
 	// Legacy records lack signer/transport and are only readable for the original
 	// master identity and original endpoint. They can never target a subaccount.
 	if p.Signer == "" {
-		if c.account != "" || p.Account != c.SignerAddress() || c.Mainnet || c.NativeBinary != "" || p.Endpoint != "" || (p.Transport != "" && p.Transport != "http") {
+		if c.account != "" || p.Account != c.SignerAddress() || c.Mainnet || p.Endpoint != "" || (p.Transport != "" && p.Transport != "http") {
 			return nil, fmt.Errorf("legacy pending journal cannot prove subaccount identity")
 		}
 	} else if p.Signer != c.SignerAddress() || p.Transport != c.transportIdentity() || p.Mainnet != c.Mainnet {
@@ -181,7 +179,7 @@ func (c *Client) trackedExchange(ctx context.Context, action any) error {
 	if err != nil {
 		return err
 	}
-	p := &pendingRequest{Signer: c.SignerAddress(), Transport: c.transportIdentity(), Mainnet: c.Mainnet, Account: c.AccountAddress(), URL: c.URL, Endpoint: c.NativeEndpoint, Nonce: nonce}
+	p := &pendingRequest{Signer: c.SignerAddress(), Transport: c.transportIdentity(), Mainnet: c.Mainnet, Account: c.AccountAddress(), URL: c.URL, Nonce: nonce}
 	// A caller-supplied cloid is kept (the caller may cancel or look up by it later);
 	// only orders without one get a random cloid so execution can still be resolved.
 	assign := func(o *Order) error {
@@ -353,9 +351,6 @@ func (c *Client) RecoverPending(ctx context.Context) error {
 	lock := c.signerOperationLock()
 	lock.Lock()
 	defer lock.Unlock()
-	if err := c.validateTransport(); err != nil {
-		return err
-	}
 	release, err := c.lockDurableSigner()
 	if err != nil {
 		return err
