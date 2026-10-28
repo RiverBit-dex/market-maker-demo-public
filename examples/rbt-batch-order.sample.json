@@ -1,0 +1,22 @@
+{
+  "type": "order",
+  "orders": [
+    {
+      "a": 0,
+      "b": true,
+      "p": "100.0000",
+      "s": "0.15",
+      "r": false,
+      "t": { "limit": { "tif": "Alo" } }
+    },
+    {
+      "a": 0,
+      "b": false,
+      "p": "110.0000",
+      "s": "0.15",
+      "r": false,
+      "t": { "limit": { "tif": "Alo" } }
+    }
+  ],
+  "grouping": "na"
+}

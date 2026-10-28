@@ -1,0 +1,7 @@
+.env
+key
+*.key
+.guild-mm-state/
+bin/
+/market-maker-demo
+/guild-mm-demo
