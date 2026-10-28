@@ -8,6 +8,8 @@ This Go demo shows how a market maker can use an API wallet to connect to RiverB
 
 The [API guide](docs/guild-market-maker-api.en.md) describes protocol details, signing, fields and errors. This README describes how to run the demo.
 
+For a continuous maker, read [execution and reconciliation](docs/guild-market-maker-api.en.md#11-execution-and-reconciliation-for-continuous-market-making): request/order state separation, partial fills, cancel races, replacements, risk budgets, error handling and shutdown.
+
 ## Features
 
 - Market data: incremental `l2` book (default, locally replayed to print best bid and ask), full `l2Book`, `trades`, and one-minute `candle`.
@@ -55,7 +57,9 @@ Expect startup and HTTP reachability messages, `bin-ws login ok`, a subscription
 
 ### Place orders via REST or WebSocket
 
-Copy `examples/rbt-batch-order.sample.json` to `my-order.json` and adjust the market index, prices and sizes for the live market. Then run:
+BTC examples use asset index `1`, size `0.001`, and integer placeholder prices. Re-query `metaAndAssetCtxs` and adjust prices to the live book before submitting.
+
+Copy `examples/btc-batch-order.sample.json` to `my-order.json` and adjust the market index, prices and sizes for the live market. Then run:
 
 ```sh
 ORDER_TRANSPORT=rest ACTION_FILE=my-order.json go run ./cmd/market-maker-demo trade
@@ -71,15 +75,15 @@ Create `flow-order.json` with two unique lowercase cloids (`0x` plus 32 lowercas
 
 ```json
 {"type":"order","orders":[
-  {"a":0,"b":true,"p":"100.0000","s":"0.15","r":false,"t":{"limit":{"tif":"Alo"}},"c":"0x11111111111111111111111111111111"},
-  {"a":0,"b":true,"p":"99.0000","s":"0.15","r":false,"t":{"limit":{"tif":"Alo"}},"c":"0x22222222222222222222222222222222"}
+  {"a":1,"b":true,"p":"80000","s":"0.001","r":false,"t":{"limit":{"tif":"Alo"}},"c":"0x11111111111111111111111111111111"},
+  {"a":1,"b":true,"p":"79900","s":"0.001","r":false,"t":{"limit":{"tif":"Alo"}},"c":"0x22222222222222222222222222222222"}
 ],"grouping":"na"}
 ```
 
 Run `ACTION_FILE=flow-order.json go run ./cmd/market-maker-demo trade` and record the two returned oids in order. Create `flow-modify.json`, replacing `<oid1>` with the first actual oid:
 
 ```json
-{"type":"batchModify","modifies":[{"oid":<oid1>,"order":{"a":0,"b":true,"p":"99.5000","s":"0.15","r":false,"t":{"limit":{"tif":"Alo"}},"c":"0x11111111111111111111111111111111"}}]}
+{"type":"batchModify","modifies":[{"oid":<oid1>,"order":{"a":1,"b":true,"p":"79950","s":"0.001","r":false,"t":{"limit":{"tif":"Alo"}},"c":"0x11111111111111111111111111111111"}}]}
 ```
 
 Run it with `ACTION_FILE=flow-modify.json go run ./cmd/market-maker-demo trade`. The replacement has a new oid. Including the original `c` preserves the cloid; without it the demo generates a new one. Single `modify` is also supported; its response does not include the new oid, so the demo resolves it via cloid.
@@ -87,13 +91,13 @@ Run it with `ACTION_FILE=flow-modify.json go run ./cmd/market-maker-demo trade`.
 Cancel the second original order with `flow-cancel.json`, replacing `<oid2>` with its actual oid:
 
 ```json
-{"type":"cancel","cancels":[{"a":0,"o":<oid2>}]}
+{"type":"cancel","cancels":[{"a":1,"o":<oid2>}]}
 ```
 
 Cancel the modified order with `flow-cancel-cloid.json`:
 
 ```json
-{"type":"cancelByCloid","cancels":[{"asset":0,"cloid":"0x11111111111111111111111111111111"}]}
+{"type":"cancelByCloid","cancels":[{"asset":1,"cloid":"0x11111111111111111111111111111111"}]}
 ```
 
 Run each with `ACTION_FILE=<file> go run ./cmd/market-maker-demo trade`. The demo checks that each cancellation target is absent from open orders; `current open orders ...: 0` means there are no current open orders. Multiple action files may be comma-separated in `ACTION_FILE`; each is reconciled before the next is submitted.
@@ -128,7 +132,7 @@ Each `ACTION_FILE` is a JSON action of type `order`, `cancel`, `cancelByCloid`, 
 | `BIN_WS_LOGIN_HOST` | `pre-api.riverbit.io` | Signed login host; must match the server's public host |
 | `API_GATEWAY_URL` | `https://pre-api.riverbit.io` | HTTP base for `/info` and REST `/exchange` |
 | `ORDER_TRANSPORT` | `ws` | `trade` / `recover` transport: `ws` or `rest` |
-| `COIN` | `RBT` | Market used to validate the asset index |
+| `COIN` | `BTC` | Market used to validate the asset index |
 | `BOOK_STREAM` | `l2` | `l2` incremental or `l2Book` full book |
 | `GUILD_VAULT_ADDRESS` | empty | Vault target; otherwise use the master account |
 | `KEY_FILE` | `key` | API wallet private-key file |

@@ -45,7 +45,7 @@ func Load() Config {
 		BinWSURL:       value("BIN_WS_URL", DefaultBinWSURL),
 		BinWSLoginHost: value("BIN_WS_LOGIN_HOST", DefaultBinWSLoginHost),
 		APIGatewayURL:  value("API_GATEWAY_URL", DefaultAPIGatewayURL),
-		Coin:           value("COIN", "RBT"),
+		Coin:           value("COIN", "BTC"),
 		BookStream:     value("BOOK_STREAM", "l2"),
 		OrderTransport: value("ORDER_TRANSPORT", OrderTransportWS),
 		GuildVault:     strings.ToLower(os.Getenv("GUILD_VAULT_ADDRESS")),

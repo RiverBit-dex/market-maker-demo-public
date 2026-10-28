@@ -2,7 +2,7 @@
 
 中文 | [English](guild-market-maker-api.en.md)
 
-本手册说明做市商如何用 API wallet 接入 RiverBit:查询市场与账户、签名并提交下单/撤单/改单、通过二进制 WebSocket(bin-ws)订阅行情和订单推送。文中的市场(RBT)、价格、地址和订单号都只是格式示例，接入时换成你自己的账户和目标市场。
+本手册说明做市商如何用 API wallet 接入 RiverBit:查询市场与账户、签名并提交下单/撤单/改单、通过二进制 WebSocket(bin-ws)订阅行情和订单推送。文中的市场(BTC)、价格、地址和订单号都只是格式示例，接入时换成你自己的账户和目标市场。
 
 目录
 
@@ -16,6 +16,8 @@
 8. 改单
 9. 查询与跟踪
 10. 错误、限频与重连
+11. 持续做市的执行与对账建议
+
 - 附录 A:bin-ws Protobuf 定义
 - 附录 B:签名测试向量
 
@@ -97,7 +99,7 @@ curl -sS https://pre-api.riverbit.io/info \
 
 1. `POST /info` 查 `chainIdentity`,记下 `nextAgentChainId`(第 3.4 节)。
 2. 用 API wallet 地址查 `userRole`,确认 `role` 是 `agent`,记下主账户地址。代金库做市时，再用主账户查 `leadingVaults`,拿到金库地址。
-3. 查 `metaAndAssetCtxs`:响应第一个元素的 `universe` 数组按顺序对应 asset index,找到 `name` 等于目标市场(如 `"RBT"`)的元素，它的下标就是订单字段 `a`,它的 `szDecimals` 决定价格和数量精度(第 6.2 节)。每次启动都重新查询，不要写死。
+3. 查 `metaAndAssetCtxs`:响应第一个元素的 `universe` 数组按顺序对应 asset index,找到 `name` 等于目标市场(如 `"BTC"`)的元素，它的下标就是订单字段 `a`,它的 `szDecimals` 决定价格和数量精度(第 6.2 节)。每次启动都重新查询，不要写死。
 4. 建立 bin-ws 连接，第一帧登录(第 4.2 节),然后订阅行情和订单/成交推送(第 5 节)。
 5. 构造 action、签名(第 3 节),通过 REST `/exchange` 或 bin-ws `action_json` 提交(第 6.4 节)。
 6. 逐项检查回包(第 6.5 节),并用订单推送或 `orderStatus` 核对结果(第 9 节)。
@@ -110,7 +112,7 @@ curl -sS https://pre-api.riverbit.io/info \
 
 ```json
 {
-  "action": {"type": "order", "orders": [{"a": 0, "b": true, "p": "100.5", "s": "0.5", "r": false, "t": {"limit": {"tif": "Alo"}}}], "grouping": "na"},
+  "action": {"type": "order", "orders": [{"a": 1, "b": true, "p": "80000", "s": "0.001", "r": false, "t": {"limit": {"tif": "Alo"}}}], "grouping": "na"},
   "nonce": 1792168694973,
   "signature": {"r": "0x<64 hex digits>", "s": "0x<64 hex digits>", "v": 27}
 }
@@ -274,17 +276,17 @@ message WsV2LoginResult {
 
 | 数据 | `subscribe_json` | 推送帧 | 说明 |
 |---|---|---|---|
-| 盘口增量(推荐) | `{"type":"l2","c":"RBT"}` | `l2_delta` | 先推快照再推增量，见第 5.3 节 |
-| 完整盘口 | `{"type":"l2Book","coin":"RBT"}` | `l2_book` | 每次推完整盘口；可选 `nSigFigs`(2–5)和 `mantissa` |
-| 最优买卖价 | `{"type":"bbo","coin":"RBT"}` | `bbo` | |
-| 市场成交 | `{"type":"trades","coin":"RBT"}` | `trades` | |
-| K 线 | `{"type":"candle","coin":"RBT","interval":"1m"}` | `candle` | 周期可选 `1m 3m 5m 15m 30m 1h 2h 4h 8h 12h 1d 3d 1w` |
+| 盘口增量(推荐) | `{"type":"l2","c":"BTC"}` | `l2_delta` | 先推快照再推增量，见第 5.3 节 |
+| 完整盘口 | `{"type":"l2Book","coin":"BTC"}` | `l2_book` | 每次推完整盘口；可选 `nSigFigs`(2–5)和 `mantissa` |
+| 最优买卖价 | `{"type":"bbo","coin":"BTC"}` | `bbo` | |
+| 市场成交 | `{"type":"trades","coin":"BTC"}` | `trades` | |
+| K 线 | `{"type":"candle","coin":"BTC","interval":"1m"}` | `candle` | 周期可选 `1m 3m 5m 15m 30m 1h 2h 4h 8h 12h 1d 3d 1w` |
 | 当前挂单 | `{"type":"openOrders","user":"<master-or-vault-address>"}` | `json` | 先推挂单快照，再推变化 |
 | 订单更新 | `{"type":"orderUpdates","user":"<master-or-vault-address>"}` | `json` | 只推变化，见第 9.3 节 |
 | 账户成交 | `{"type":"userFills","user":"<master-or-vault-address>"}` | `json` | |
 | 账户持仓 | `{"type":"clearinghouseState","user":"<master-or-vault-address>"}` | `json` | |
 
-`l2` 是 RiverBit 的扩展订阅(不属于 Hyperliquid 规范),市场字段是 `c`,不是 `coin`;可选 `s`(数字，含义同 `nSigFigs`),例如 `{"type":"l2","c":"RBT","s":5}`。其他订阅都用 `coin`。
+`l2` 是 RiverBit 的扩展订阅(不属于 Hyperliquid 规范),市场字段是 `c`,不是 `coin`;可选 `s`(数字，含义同 `nSigFigs`),例如 `{"type":"l2","c":"BTC","s":5}`。其他订阅都用 `coin`。
 
 支持的全部 25 种订阅类型(Hyperliquid 规范的 24 种加 `l2`):
 
@@ -325,8 +327,8 @@ message WsV2LoginResult {
 {
   "type": "order",
   "orders": [
-    {"a": 0, "b": true, "p": "100.5", "s": "0.5", "r": false, "t": {"limit": {"tif": "Alo"}}, "c": "0x00000000000000000000000000000001"},
-    {"a": 0, "b": false, "p": "110.5", "s": "0.5", "r": false, "t": {"limit": {"tif": "Alo"}}, "c": "0x00000000000000000000000000000002"}
+    {"a": 1, "b": true, "p": "80000", "s": "0.001", "r": false, "t": {"limit": {"tif": "Alo"}}, "c": "0x00000000000000000000000000000001"},
+    {"a": 1, "b": false, "p": "82000", "s": "0.001", "r": false, "t": {"limit": {"tif": "Alo"}}, "c": "0x00000000000000000000000000000002"}
   ],
   "grouping": "na"
 }
@@ -334,7 +336,7 @@ message WsV2LoginResult {
 
 | 字段 | 含义 |
 |---|---|
-| `a` | asset index,取自 `metaAndAssetCtxs`(第 2 节)。示例中的 `0` 只是示例 |
+| `a` | asset index,取自 `metaAndAssetCtxs`(第 2 节)。示例中的 `1` 是本次 PRE 查询所得 BTC 下标，接入时必须重新查询 |
 | `b` | `true` 买,`false` 卖 |
 | `p` | 限价，十进制字符串，精度见第 6.2 节 |
 | `s` | 数量，十进制字符串，精度见第 6.2 节 |
@@ -349,8 +351,8 @@ message WsV2LoginResult {
 
 | 规则 | 违反时的逐笔错误 |
 |---|---|
-| 数量小数位 ≤ `szDecimals`(取自 `metaAndAssetCtxs` 的 `universe`,如 RBT=2、BTC=5、ETH=4、SOL=2) | `local execution rejection: PrecisionExceeded` |
-| 价格小数位 ≤ `6 − szDecimals`,且最多 5 位有效数字；整数价格不受有效数字限制。按数值判定，末尾的 0 不计入(如 RBT 写 `"50.0000"` 与 `"50"` 都合法) | `local execution rejection: PrecisionExceeded` |
+| 数量小数位 ≤ `szDecimals`(取自 `metaAndAssetCtxs` 的 `universe`,如 BTC=5、ETH=4、SOL=2) | `local execution rejection: PrecisionExceeded` |
+| 价格小数位 ≤ `6 − szDecimals`,且最多 5 位有效数字；整数价格不受有效数字限制。按数值判定，末尾的 0 不计入(如 BTC 写 `"50.0000"` 与 `"50"` 都合法) | `local execution rejection: PrecisionExceeded` |
 | 价格是 tick 的整数倍 | `Price must be divisible by tick size. asset=N`(orderStatus 为 `tickRejected`) |
 | 十进制格式合法：不能写 `".5"`、`"-1"`、`"1e5"`、`"+1"`,不能带空格 | `local execution rejection: BadDecimal` |
 | 数量不为 0 | `Order has zero size.` |
@@ -387,7 +389,7 @@ curl -sS https://pre-api.riverbit.io/exchange \
 
 ```json
 {
-  "action": {"type": "order", "orders": [{"a": 0, "b": true, "p": "100.5", "s": "0.5", "r": false, "t": {"limit": {"tif": "Alo"}}}], "grouping": "na"},
+  "action": {"type": "order", "orders": [{"a": 1, "b": true, "p": "80000", "s": "0.001", "r": false, "t": {"limit": {"tif": "Alo"}}}], "grouping": "na"},
   "nonce": 1792168694973,
   "signature": {"r": "0x<64 hex digits>", "s": "0x<64 hex digits>", "v": 28},
   "vaultAddress": "0x<your-vault-address>"
@@ -406,7 +408,7 @@ REST `/exchange` 的回包示例(主账户下单，第一笔是 `Alo` 买单、�
     "data": {
       "statuses": [
         {"resting": {"oid": 123456789, "cloid": "0x00000000000000000000000000000001"}},
-        {"filled": {"totalSz": "0.5", "avgPx": "100.3", "oid": 123456790, "cloid": "0x00000000000000000000000000000002"}}
+        {"filled": {"totalSz": "0.001", "avgPx": "80000", "oid": 123456790, "cloid": "0x00000000000000000000000000000002"}}
       ]
     }
   }
@@ -468,8 +470,8 @@ bin-ws 服务端或节点层面出错时，`response.type` 是 `error`,例如在
 {
   "type": "cancel",
   "cancels": [
-    {"a": 0, "o": 123456789},
-    {"a": 0, "o": 123456790}
+    {"a": 1, "o": 123456789},
+    {"a": 1, "o": 123456790}
   ]
 }
 ```
@@ -480,8 +482,8 @@ bin-ws 服务端或节点层面出错时，`response.type` 是 `error`,例如在
 {
   "type": "cancelByCloid",
   "cancels": [
-    {"asset": 0, "cloid": "0x00000000000000000000000000000001"},
-    {"asset": 0, "cloid": "0x00000000000000000000000000000002"}
+    {"asset": 1, "cloid": "0x00000000000000000000000000000001"},
+    {"asset": 1, "cloid": "0x00000000000000000000000000000002"}
   ]
 }
 ```
@@ -519,8 +521,8 @@ bin-ws 服务端或节点层面出错时，`response.type` 是 `error`,例如在
 {
   "type": "batchModify",
   "modifies": [
-    {"oid": 123456789, "order": {"a": 0, "b": true, "p": "101.5", "s": "0.5", "r": false, "t": {"limit": {"tif": "Alo"}}, "c": "0x00000000000000000000000000000001"}},
-    {"oid": 123456790, "order": {"a": 0, "b": false, "p": "109.5", "s": "0.5", "r": false, "t": {"limit": {"tif": "Alo"}}, "c": "0x00000000000000000000000000000002"}}
+    {"oid": 123456789, "order": {"a": 1, "b": true, "p": "80100", "s": "0.001", "r": false, "t": {"limit": {"tif": "Alo"}}, "c": "0x00000000000000000000000000000001"}},
+    {"oid": 123456790, "order": {"a": 1, "b": false, "p": "81900", "s": "0.001", "r": false, "t": {"limit": {"tif": "Alo"}}, "c": "0x00000000000000000000000000000002"}}
   ]
 }
 ```
@@ -550,7 +552,7 @@ bin-ws 服务端或节点层面出错时，`response.type` 是 `error`,例如在
 {
   "type": "modify",
   "oid": 123456789,
-  "order": {"a": 0, "b": true, "p": "101.5", "s": "0.5", "r": false, "t": {"limit": {"tif": "Alo"}}, "c": "0x00000000000000000000000000000001"}
+  "order": {"a": 1, "b": true, "p": "80100", "s": "0.001", "r": false, "t": {"limit": {"tif": "Alo"}}, "c": "0x00000000000000000000000000000001"}
 }
 ```
 
@@ -575,18 +577,18 @@ curl -sS https://pre-api.riverbit.io/info \
 `openOrders` 每项只有 `coin`、`side`(`B` 买 / `A` 卖)、`limitPx`、`sz`(剩余数量)、`oid`、`timestamp`:
 
 ```json
-[{"coin":"RBT","limitPx":"100.5000","oid":123456789,"side":"B","sz":"0.5","timestamp":1792168694973}]
+[{"coin":"BTC","limitPx":"80000","oid":123456789,"side":"B","sz":"0.001","timestamp":1792168694973}]
 ```
 
 需要 `cloid`、`origSz`(原始数量)、`tif` 时用 `frontendOpenOrders`(同样传 `user`):
 
 ```json
-[{"coin":"RBT","side":"B","limitPx":"100.5","sz":"0.5","oid":123456789,"timestamp":1792168694973,"triggerCondition":"N/A","isTrigger":false,"triggerPx":"0.0","children":[],"isPositionTpsl":false,"reduceOnly":false,"orderType":"Limit","origSz":"0.5","tif":"Alo","cloid":"0x00000000000000000000000000000001"}]
+[{"coin":"BTC","side":"B","limitPx":"80000","sz":"0.001","oid":123456789,"timestamp":1792168694973,"triggerCondition":"N/A","isTrigger":false,"triggerPx":"0.0","children":[],"isPositionTpsl":false,"reduceOnly":false,"orderType":"Limit","origSz":"0.001","tif":"Alo","cloid":"0x00000000000000000000000000000001"}]
 ```
 
 `[]` 表示当前没有挂单。
 
-**价格按数值比较，不要按字符串比较**:同一价格在不同接口的字符串形式不同(如 `openOrders` 是 `"100.5000"`,`frontendOpenOrders`/`orderStatus` 是 `"100.5"`),和自己下单时发的字符串也可能不同。
+**价格按数值比较，不要按字符串比较**:同一价格可能表示成 `"80000.0"` 或 `"80000"`，和自己下单时发的字符串也可能不同。
 
 ### 9.2 单笔订单状态：`orderStatus`
 
@@ -613,7 +615,7 @@ curl -sS https://pre-api.riverbit.io/info \
   "leg": {"resting": {"oid": 123456789, "cloid": "0x00000000000000000000000000000001"}},
   "order": {
     "order": {
-      "coin": "RBT", "side": "B", "limitPx": "100.5", "sz": "0.5", "origSz": "0.5",
+      "coin": "BTC", "side": "B", "limitPx": "80000", "sz": "0.001", "origSz": "0.001",
       "oid": 123456789, "cloid": "0x00000000000000000000000000000001",
       "orderType": "Limit", "tif": "Alo", "reduceOnly": false, "timestamp": 1792168694973,
       "isTrigger": false, "triggerCondition": "N/A", "triggerPx": "0.0", "isPositionTpsl": false, "children": []
@@ -631,7 +633,8 @@ curl -sS https://pre-api.riverbit.io/info \
 | 类别 | 取值 |
 |---|---|
 | 挂单中 | `open` |
-| 结束 | `filled`、`canceled`(含被改单替换的原单)、`triggered`、`rejected`(另带 `rejectionReason`) |
+| 结束 | `filled`、`canceled`(含被改单替换的原单)、`rejected`(另带 `rejectionReason`) |
+| 已触发，需继续核对后续订单 | `triggered`；不能据此认定撤单成功或敞口归零 |
 | 下单被拒 | `tickRejected`、`minTradeNtlRejected`、`reduceOnlyRejected`、`badAloPxRejected`(Alo 单会吃单)、`iocCancelRejected`、`perpMarginRejected`、`oracleRejected`、`insufficientSpotBalanceRejected` |
 | 被系统撤销 | `selfTradeCanceled`、`reduceOnlyCanceled`、`siblingFilledCanceled`、`scheduledCancel`、`vaultWithdrawalCanceled` |
 
@@ -655,7 +658,7 @@ curl -sS https://pre-api.riverbit.io/info \
   "channel": "orderUpdates",
   "data": [
     {
-      "order": {"coin": "RBT", "side": "B", "limitPx": "100.5", "sz": "0.5", "oid": 123456789, "timestamp": 1792168694973, "origSz": "0.5"},
+      "order": {"coin": "BTC", "side": "B", "limitPx": "80000", "sz": "0.001", "oid": 123456789, "timestamp": 1792168694973, "origSz": "0.001"},
       "status": "open",
       "statusTimestamp": 1792168694973
     }
@@ -669,9 +672,9 @@ curl -sS https://pre-api.riverbit.io/info \
 
 | 操作 | 核对 |
 |---|---|
-| 下单 | 逐项检查 `statuses[]`;保存 `oid`/`cloid`;用推送或 `orderStatus` 确认 `open` |
+| 下单 | 逐项检查 `statuses[]`;保存 `oid`/`cloid`;核对挂单、成交或明确拒绝，不要求每笔都先出现 `open` |
 | 撤单 | 逐项确认 `"success"`;确认 `order.status` 已是终态、oid 不在挂单列表里 |
-| 改单 | `batchModify` 从 `resting.oid` 取新 oid;确认旧 oid 为 `canceled`、新 oid 为 `open` |
+| 改单 | 从逐笔成功回执取新 oid；核对旧 oid 终态和新 oid 当前状态；失败腿重新查旧单，不假定它已撤销 |
 | 超时 / 断连 | 按第 3.6 节保留 pending 并查询恢复；未知不是拒绝，不能换 nonce 重发或只凭挂单缺失认定未执行 |
 
 ## 10. 错误、限频与重连
@@ -689,7 +692,7 @@ curl -sS https://pre-api.riverbit.io/info \
 
 ### 10.2 `/exchange` 整个 action 被拒
 
-格式统一为 `{"status":"err","response":"action rejected by execution (code N)"}`,没有 `statuses`,action 里的所有订单都没有执行。
+这类响应的格式为 `{"status":"err","response":"action rejected by execution (code N)"}`。只有明确的拒绝且没有可能产生交易效果的结果时，才能结束本次请求的 pending。必须同时检查 `committedResult` 和逐笔结果；顶层 `status:"err"` 本身不能证明所有腿都没执行。重复 nonce 拒绝的是这次提交，不能据此推断原请求的结果。
 
 | code | 含义 | 处理 |
 |---|---|---|
@@ -704,7 +707,7 @@ curl -sS https://pre-api.riverbit.io/info \
 
 ### 10.3 REST 限频
 
-- 按客户端 IP 计，每分钟的总权重有上限(额度以运营通知为准)。超限返回 429,`Content-Type: text/plain`,body 为 `gateway: admission budget unavailable`,带 `Retry-After` 头，按该头等待后再试。
+- 按客户端 IP 计，每分钟的总权重有上限(额度以运营通知为准)。超限返回 429,`Content-Type: text/plain`,body 为 `gateway: admission budget unavailable`,带 `Retry-After` 头。查询按该头退避；交易请求先保留 pending 并核对原结果，不能套用查询的自动重试逻辑。
 - 网关并发过高时返回 503 `gateway: too many in-flight requests`。
 - 请求体超过 2 MiB 返回 413。
 
@@ -745,6 +748,73 @@ curl -sS https://pre-api.riverbit.io/info \
 3. 查 `openOrders` 或 `frontendOpenOrders`(REST 或 `info_json`),重建本地挂单表。
 4. 之后按 `orderUpdates` 推送更新本地挂单表。
 5. 断线期间结果不明的请求，按第 3.6 节保留 pending 并查询恢复；不得重发未知请求，确认结果后再决定下一步。
+
+## 11. 持续做市的执行与对账建议
+
+本节提炼自做市执行器的订单生命周期、持久请求恢复、快照检查和风险预算逻辑。它是接入方实现持续做市的建议，不代表 demo 已实现自动报价、完整资金对账或所有内部执行能力。内部旧通道的接口、数值错误码和运维参数不适用于本公网协议。
+
+### 11.1 请求状态与订单状态分开保存
+
+| 本地请求阶段（不是 API 状态枚举） | 处理 |
+|---|---|
+| 已准备 | 分配唯一 nonce/cloid，先持久化 action、signer、主账户/金库、网络、端点和操作目标，再发送；落盘不等于已经发送 |
+| 已发送、结果未知 | 超时、断连、无法解析回包或查询落后时保留 pending；暂停会与该请求冲突的新写入，仍计算可能产生的敞口 |
+| 逐腿执行已确认 | 保存每腿成功/拒绝结果、oid/cloid 和查询高度；部分成功不回滚，不能整批重发 |
+| 当前订单已核对 | 查询最新订单、成交、持仓与可用资金后重新计算目标；曾经确认成功不等于订单现在仍挂单 |
+| 明确拒绝 | 修复参数/身份/资金等根因，再构造新请求与新 nonce；原请求的审计记录保留 |
+
+一笔 action 可以创建多张订单，一张订单也可以先后有下单、改单和撤单请求。不要把“请求执行完毕”和“订单已结束”合并成一个布尔值。`filled` 的逐笔回执可能仍有挂单余量，当前状态以 `order.status` 和剩余 `sz` 为准；成交价格、数量以成交记录为准。
+
+同一 signer 的 nonce 分配必须统一协调；同一交易账户/市场建议由一个串行执行 owner 决定撤补，避免行情事件、定时刷新和恢复线程重复操作。demo 的共享 `STATE_DIR` 与本机文件锁不能替代多主机协调。
+
+### 11.2 下单、撤单、改单与补单
+
+| 场景 | 执行与核对要点 |
+|---|---|
+| 正常报价 | 保留价格、方向、剩余数量仍满足目标的旧单，只处理差额；价格数量按精确十进制或整数定点运算 |
+| 下单立即成交 | 不再等待不存在的 `open`；核对成交及可能剩余的挂单，再更新库存与资金 |
+| 部分成交后补量 | 用已确认剩余量衡量深度，不能按订单张数或原始数量补单；先重新计算整侧风险额度 |
+| 撤单与成交竞争 | 发出撤单后旧单仍按可能成交计风险；目标已成交不证明这次撤单请求已结束，还要保留/核对本次逐腿回执 |
+| 改单 | 记录旧 oid → 新 oid 与 cloid 关系；选择同方向旧单替换，不按 oid 排序位置配对买卖；失败腿重新查询旧单当前状态 |
+| 批量部分失败 | 成功腿与失败腿分别落账；只为重新评估后的缺口构造后续 action，不重发成功腿 |
+| 结果未知 | 保留 journal 与已确认的逐腿证据；`unknownOid`、空挂单列表、等待超时和 nonce 已使用都不能证明未执行 |
+
+风险撤单优先于补单，为撤单和恢复查询预留独立 API 预算。可按买卖侧设置成交后的固定批次冷却：首次确认剩余量下降/订单消失时启动，后续通知不再后推截止时间；到期后仍须重新读库存、资金和行情。订单消失只是深度缺口，不能直接记成成交。冷却、最大单龄、重报价阈值由接入方按策略配置，本 demo 不提供策略默认值。
+
+### 11.3 快照、推送与风险敞口
+
+推送用于及时唤醒对账，不单独作为资金账本。重连后重新登录/订阅，缓存恢复期间到达的更新，查询挂单、订单状态、成交和账户状态，再按身份与可用事件标识去重、核对。不要假定快照与实时事件天然无缝，也不要把查询返回的 `height` 当作原交易执行块高度。
+
+保存已接受执行证据的最低查询高度，拒绝用更旧的投影覆盖本地新状态。普通 `openOrders` 没有快照高度，多次独立查询也不保证同一提交态；缺少足够证据时暂停新增敞口并继续对账，不能自行给响应补高度。内部一致性快照和执行证明不应被当作已对外提供的能力。
+
+整侧风险预算同时考虑现有持仓、全部存活订单、待撤订单、结果未知的新增/改单以及准备提交的订单。普通卖单不必然减仓；不能对每一档重复使用同一份仓位或保证金额度。行情过期、盘口交叉、交易禁用、账户/价格身份不符或资金不可用时暂停新增报价；按已知订单和可用授权执行风险撤单，结果未知仍保留记录。
+
+### 11.4 错误后的下一步
+
+| 信号 | 分类与下一步 |
+|---|---|
+| `91` | 核对 API wallet 授权、所属主账户、签名字段顺序与动态 chainId；不能一律解释为缺资金或自动调用 faucet |
+| `1160` | Guild 报价/替换单改用 `Alo`，修复整批中的违规腿后重新评估提交 |
+| `203` / `204` | 核对毫秒时钟、nonce 窗口与分配器；只处理明确拒绝的当前请求，不覆盖其他未知请求 |
+| `205` / `action already pending` | 查询原 nonce 对应 action 的订单结果，不换 nonce 复制该交易 |
+| `97` | 降低在途并发，优先恢复已有请求；继续保留原请求状态 |
+| `PrecisionExceeded` / `BadDecimal` / tick / 最小金额拒绝 | 修正精度、tick、step 或名义金额；`PrecisionExceeded` 的单元素回包不能当作普通逐腿数组解析 |
+| `badAloPxRejected` / `oracleRejected` | 读取最新盘口、参考价及交易状态后重新定价；不是直接改成 taker 单 |
+| `perpMarginRejected` / `reduceOnlyRejected` / 余额不足 | 重查持仓和可用资金并缩量/调整方向，停止按原数量循环提交 |
+| 系统撤单状态 | 核对自成交、仓位、关联单或金库状态等原因，再决定是否补单；不要统一当成普通成交 |
+| HTTP 429/503/5xx、超时、断连、回包损坏 | 查询可退避重试；交易保留 pending 并恢复查询，不能只凭 HTTP 状态证明没有执行 |
+| `status:"err"` 带混合 `committedResult`、`localCommitted` 或要求查询的提示 | 可能已有部分效果；保存完整回包并逐腿核对，不能整批判失败 |
+| 未知错误码或订单状态 | 保存诊断信息、暂停冲突写入并请求支持，不推断为成功、终态或可安全重发 |
+
+详细字段、错误字符串和适用范围仍以第 6–10 节为准。日志记录请求标识、nonce、账户/市场、操作、oid/cloid、逐腿结果、观测高度和阶段耗时；不记录私钥或可重放的完整签名请求。
+
+### 11.5 重启、退出与监控
+
+重启先校验原 signer、账户、端点、网络与持久目录，恢复未知请求，再重建当前挂单和风险状态。切换 WS/REST、账户或部署实例不能绕过 pending。demo 的 `recover` 只查询，不重新执行 `ACTION_FILE`。
+
+持续做市程序退出时应先停新增报价，保留未知请求，核对并撤销本实例管理范围内的已知挂单，确认结果后再报告清理完成。仅退出进程或关闭 WS 不会自动撤单；demo 不带持续策略的退出自动撤单，手动 trade 后的挂单需显式撤销。撤单失败或查询不可用要报告未完成，不能把进程退出成功当成账户已无敞口。
+
+建议监控 pending 数量与年龄、行情/账户数据年龄、逐腿拒绝原因、限频、断线、剩余深度与库存、所需撤单未确认时长，以及提交到结果确认、结果确认到订单可见的分阶段延迟。只统计成功请求的延迟会掩盖停滞，须同时记录未知请求与暂停报价时间。
 
 ## 附录 A:bin-ws Protobuf 定义
 
@@ -884,6 +954,8 @@ message Trade {
 ```
 
 ## 附录 B:签名测试向量
+
+以下交易签名向量保留原始资产索引与价格，仅用于离线验签，不是可提交的 BTC 订单示例。
 
 以下向量由两套独立实现(Python、Go)算出，结果一致。所有向量使用同一把测试私钥：
 

@@ -2,7 +2,7 @@
   "type": "cancelByCloid",
   "cancels": [
     {
-      "asset": 0,
+      "asset": 1,
       "cloid": "0x11111111111111111111111111111111"
     }
   ]

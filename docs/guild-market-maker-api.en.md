@@ -44,7 +44,7 @@ Trading uses Hyperliquid-style L1 phantom-agent EIP-712 signing with the chain I
 ### 3.1 Request and MessagePack
 
 ```json
-{"action":{"type":"order","orders":[{"a":0,"b":true,"p":"100.5","s":"0.5","r":false,"t":{"limit":{"tif":"Alo"}}}],"grouping":"na"},"nonce":1792168694973,"signature":{"r":"0x<64 hex digits>","s":"0x<64 hex digits>","v":27}}
+{"action":{"type":"order","orders":[{"a":1,"b":true,"p":"80000","s":"0.001","r":false,"t":{"limit":{"tif":"Alo"}}}],"grouping":"na"},"nonce":1792168694973,"signature":{"r":"0x<64 hex digits>","s":"0x<64 hex digits>","v":27}}
 ```
 
 Add top-level `vaultAddress` for vault trading. The node converts the received action JSON to MessagePack in **received key order**. Sign and send the same order; do not reserialize after signing. Strings are not normalized: `"52.000"` and `"52"` have different signing images even though both are accepted. Nonnegative integers use the most compact uint encoding; strings use str, booleans use bool and numbers with decimal points use float64. **Price and size must be strings.** Duplicate keys and fields outside the action's fixed schema are rejected. `order` allows `type`, `orders`, `grouping`, optional `builder`; each order allows `a`, `b`, `p`, `s`, `r`, `t`, optional `c`.
@@ -98,11 +98,11 @@ Account queries and subscriptions may target only the master or vaults it leads;
 
 | Stream | Subscription example | Frame / behavior |
 |---|---|---|
-| Incremental book | `{"type":"l2","c":"RBT"}` | `l2_delta`: snapshot then updates |
-| Full book | `{"type":"l2Book","coin":"RBT"}` | `l2_book`; optional `nSigFigs` 2–5 and `mantissa` |
-| Best bid/offer | `{"type":"bbo","coin":"RBT"}` | `bbo` |
-| Trades | `{"type":"trades","coin":"RBT"}` | `trades` |
-| Candles | `{"type":"candle","coin":"RBT","interval":"1m"}` | `candle`; intervals `1m 3m 5m 15m 30m 1h 2h 4h 8h 12h 1d 3d 1w` |
+| Incremental book | `{"type":"l2","c":"BTC"}` | `l2_delta`: snapshot then updates |
+| Full book | `{"type":"l2Book","coin":"BTC"}` | `l2_book`; optional `nSigFigs` 2–5 and `mantissa` |
+| Best bid/offer | `{"type":"bbo","coin":"BTC"}` | `bbo` |
+| Trades | `{"type":"trades","coin":"BTC"}` | `trades` |
+| Candles | `{"type":"candle","coin":"BTC","interval":"1m"}` | `candle`; intervals `1m 3m 5m 15m 30m 1h 2h 4h 8h 12h 1d 3d 1w` |
 | Orders, fills, positions | `{"type":"openOrders","user":"<master-or-vault>"}` | JSON; also `orderUpdates`, `userFills`, `clearinghouseState` |
 
 `l2` is a RiverBit extension and uses `c`, not `coin`; optional numeric `s` has the meaning of `nSigFigs`. The 25 supported subscriptions are `allMids`, `notification`, `webData3`, `twapStates`, `clearinghouseState`, `openOrders`, `candle`, `l2Book`, `trades`, `orderUpdates`, `userEvents` (channel `user`), `userFills`, `userFundings`, `userNonFundingLedgerUpdates`, `activeAssetCtx`, `activeAssetData`, `userTwapSliceFills`, `userTwapHistory`, `bbo`, `spotState`, `allDexsClearinghouseState`, `allDexsAssetCtxs`, `outcomeMetaUpdates`, `fastAssetCtxs`, `l2`.
@@ -114,14 +114,14 @@ For `l2`, replace the entire book on snapshot. For an update, remove `bid_remove
 ## 6. Orders
 
 ```json
-{"type":"order","orders":[{"a":0,"b":true,"p":"100.5","s":"0.5","r":false,"t":{"limit":{"tif":"Alo"}},"c":"0x00000000000000000000000000000001"},{"a":0,"b":false,"p":"110.5","s":"0.5","r":false,"t":{"limit":{"tif":"Alo"}},"c":"0x00000000000000000000000000000002"}],"grouping":"na"}
+{"type":"order","orders":[{"a":1,"b":true,"p":"80000","s":"0.001","r":false,"t":{"limit":{"tif":"Alo"}},"c":"0x00000000000000000000000000000001"},{"a":1,"b":false,"p":"82000","s":"0.001","r":false,"t":{"limit":{"tif":"Alo"}},"c":"0x00000000000000000000000000000002"}],"grouping":"na"}
 ```
 
 `a` is asset index, `b` buy when true, `p` price and `s` size as decimal strings, `r` reduce-only, `t.limit.tif` is `Alo` (maker-only; immediately marketable orders are rejected) or `Gtc`, and `grouping` is `na`. Optional `c` is a lowercase `0x` plus 32 hex digits; it can be used for queries and cancellation. Preserve exact field order for signing.
 
 Perpetual order constraints:
 
-- Size decimals must not exceed `szDecimals` (examples RBT 2, BTC 5, ETH 4, SOL 2). Price decimals must not exceed `6 - szDecimals` and price has at most five significant digits; integer prices are exempt from the significant-digit limit, and trailing zeroes do not count. `PrecisionExceeded` yields only one status and allocates no oid to any leg of the action.
+- Size decimals must not exceed `szDecimals` (examples BTC 5, ETH 4, SOL 2). Price decimals must not exceed `6 - szDecimals` and price has at most five significant digits; integer prices are exempt from the significant-digit limit, and trailing zeroes do not count. `PrecisionExceeded` yields only one status and allocates no oid to any leg of the action.
 - Price must be a multiple of tick size. Decimal strings cannot be `.5`, negative, scientific notation, prefixed with `+`, or contain spaces; invalid values return `BadDecimal`. Size cannot be zero; price must not be too far from oracle.
 - Notional is valuation price times size: for buys use min(limit, best ask); for sells max(limit, best bid). At or below $9.999999 is rejected; exactly $10 passes. Modifications are subject to the same check.
 - Every limit order submitted on behalf of a Guild vault must use `Alo`, including replacement orders. A `Gtc` leg rejects the **entire action** with code 1160 and no statuses; master-account orders have no such Guild restriction.
@@ -130,14 +130,14 @@ Send the signed body via POST `/exchange` or as UTF-8 `action_json` with a nonze
 
 ## 7. Cancel
 
-Sign and submit cancellations like orders, including `vaultAddress` for a vault. By oid: `{"type":"cancel","cancels":[{"a":0,"o":123456789}]}`. By cloid: `{"type":"cancelByCloid","cancels":[{"asset":0,"cloid":"0x00000000000000000000000000000001"}]}`. The field names differ; cloid is signed as its exact string. `statuses[]` matches `cancels[]` in order: `"success"` or an error, for example when the order was never placed, already canceled or filled. Retain the receipt and confirm the actual target state; target termination alone does not prove the cancellation request reached a final outcome.
+Sign and submit cancellations like orders, including `vaultAddress` for a vault. By oid: `{"type":"cancel","cancels":[{"a":1,"o":123456789}]}`. By cloid: `{"type":"cancelByCloid","cancels":[{"asset":1,"cloid":"0x00000000000000000000000000000001"}]}`. The field names differ; cloid is signed as its exact string. `statuses[]` matches `cancels[]` in order: `"success"` or an error, for example when the order was never placed, already canceled or filled. Retain the receipt and confirm the actual target state; target termination alone does not prove the cancellation request reached a final outcome.
 
 ## 8. Modify
 
 A replacement must be a complete order satisfying the same precision and Guild rules. The old oid becomes canceled and the replacement has a new oid. Supply the original cloid in the replacement to preserve it. Prefer `batchModify`, even for one order, because its response includes the new oid:
 
 ```json
-{"type":"batchModify","modifies":[{"oid":123456789,"order":{"a":0,"b":true,"p":"101.5","s":"0.5","r":false,"t":{"limit":{"tif":"Alo"}},"c":"0x00000000000000000000000000000001"}}]}
+{"type":"batchModify","modifies":[{"oid":123456789,"order":{"a":1,"b":true,"p":"80100","s":"0.001","r":false,"t":{"limit":{"tif":"Alo"}},"c":"0x00000000000000000000000000000001"}}]}
 ```
 
 `statuses[]` corresponds to `modifies[]`; successful `resting.oid` is the new oid. A rejected replacement has an error prefixed `Error placing new order during modify:`. Single `modify` uses `{"type":"modify","oid":...,"order":{...}}`; acceptance returns `{"status":"ok","response":{"type":"default"}}` without the new oid. Query `orderStatus` by cloid or `frontendOpenOrders` to find it. Acceptance is not finality.
@@ -148,7 +148,7 @@ A replacement must be a complete order satisfying the same precision and Guild r
 
 `orderStatus` accepts a numeric oid or lowercase `0x` plus 32 hex digits cloid; uppercase cloid or numeric oid encoded as a string returns 400. A cloid query resolves the current order after modification. Results can be `status=order` with height and order, `unknownOid` with height, or `legResult` with height but no order object. `unknownOid` is not proof of nonexecution.
 
-Use `order.status` for current state. Known values include `open`; terminal `filled`, `canceled`, `triggered`, `rejected`; rejected `tickRejected`, `minTradeNtlRejected`, `reduceOnlyRejected`, `badAloPxRejected`, `iocCancelRejected`, `perpMarginRejected`, `oracleRejected`, `insufficientSpotBalanceRejected`; and system cancellations `selfTradeCanceled`, `reduceOnlyCanceled`, `siblingFilledCanceled`, `scheduledCancel`, `vaultWithdrawalCanceled`. Do not treat an unknown status as terminal. The demo does not treat `triggered` as successful cancellation.
+Use `order.status` for current state. Known values include `open`; terminal `filled`, `canceled`, `rejected`; rejected `tickRejected`, `minTradeNtlRejected`, `reduceOnlyRejected`, `badAloPxRejected`, `iocCancelRejected`, `perpMarginRejected`, `oracleRejected`, `insufficientSpotBalanceRejected`; and system cancellations `selfTradeCanceled`, `reduceOnlyCanceled`, `siblingFilledCanceled`, `scheduledCancel`, `vaultWithdrawalCanceled`. `triggered` requires further reconciliation of the resulting order; it does not prove successful cancellation or zero exposure. Do not treat an unknown status as terminal.
 
 `leg` is the latest operation result for an oid, not the current order state: a canceled order can still have a `resting` leg. `leg.filled` quantities are raw integers, unlike decimal strings in the order receipt. A `legResult` with no current order cannot prove no remaining open quantity. Saved recovery evidence is historical, not a complete consistent order/account snapshot.
 
@@ -165,6 +165,73 @@ REST limits are per client IP; the per-minute budget is supplied operationally. 
 bin-ws quotas per IP: 10 simultaneous connections, 30 new connections/minute, 1000 subscriptions, 10 distinct subscribed users, 2000 client messages/minute, 100 outstanding action/info requests, and 1 MiB per message. Rate excess can send an error then disconnect; excess outstanding requests receive 429; oversized messages disconnect. The server disconnects after 60 seconds with no server-to-client message. On quiet connections send a ping about every 30 seconds; pong is a JSON frame with id 0.
 
 After a disconnect, reconnect and log in, resubscribe and wait for acknowledgments, query open orders and rebuild local state, then process updates. **Keep unknown requests pending and reconcile; do not resend them.** Open-order snapshots do not by themselves establish request finality or a consistent account snapshot.
+
+## 11. Execution and reconciliation for continuous market making
+
+These recommendations draw on the maker executor's lifecycle, durable recovery, snapshot checks and risk budgets. They describe responsibilities for your own continuous maker. The demo does not implement automatic quoting, complete financial reconciliation or every internal execution feature. Internal legacy endpoints, numeric error codes and deployment settings do not apply to this public protocol.
+
+### 11.1 Track requests separately from orders
+
+| Local request phase (not an API enum) | Required handling |
+|---|---|
+| Prepared | Allocate unique nonce/cloids and persist action, signer, master/vault, network, endpoint and targets before sending. A journal entry does not prove submission. |
+| Sent, outcome unknown | Retain pending after timeout, disconnect, malformed replies or lagging queries. Block conflicting writes and reserve possible exposure. |
+| Per-leg execution observed | Save each success/rejection, oid/cloid and observed query height. Partial success is not rolled back; never replay the entire batch. |
+| Current state reconciled | Read current orders, fills, position and available funds before recomputing targets. Historical success does not mean an order is still open. |
+| Explicit rejection | Correct the cause and reevaluate before creating a new request with a new nonce; retain the audit trail. |
+
+One action may create many orders; an order may subsequently have modify and cancel requests. Request completion and order termination are different states. A `filled` receipt leg can leave a resting remainder. Use current `order.status` and remaining `sz` for live state, and fill records for executed price and size. Do not wait for `open` when an order has already filled.
+
+Coordinate nonce allocation across every process using a signer. Prefer one serial execution owner per trading account/market so event handlers, periodic refresh and recovery cannot duplicate mutations. The demo's shared `STATE_DIR` and local file locks are not a multi-host coordinator.
+
+### 11.2 Place, cancel, modify and refill
+
+| Situation | Execution and reconciliation |
+|---|---|
+| Routine quoting | Retain old orders whose price, side and remaining size still satisfy the target; change only the difference. Use exact decimal or fixed-point arithmetic. |
+| Immediate fill | Confirm fills and any resting remainder rather than waiting for `open`; refresh inventory and funds. |
+| Partial fill | Measure depth by confirmed remaining size, not order count or original size. Recompute the entire side's risk budget before refilling. |
+| Cancel/fill race | Reserve exposure until the old order is confirmed inactive. A filled target alone does not prove this cancellation request completed; retain and reconcile its receipt. |
+| Modify | Track old → new oid and cloid mappings. Match replacements to same-side orders, not positions in an oid-sorted list. Re-query the old order for rejected legs. |
+| Partial batch failure | Record successes and rejections separately; construct subsequent actions only for newly evaluated gaps. Never replay successful legs. |
+| Unknown result | Retain the journal and already observed per-leg evidence. `unknownOid`, an empty book, elapsed time and a consumed nonce do not prove nonexecution. |
+
+Give risk cancellation priority over placement and reserve independent API capacity for cancellation and recovery. A per-side fixed cooldown can start when a remaining-size decrease or disappearance is first confirmed; subsequent notifications should not keep extending its deadline. At expiry, reread inventory, funds and prices. Disappearance indicates a depth gap, not necessarily a fill. Your strategy supplies cooldown, maximum order age and repricing thresholds; the demo has no strategy defaults.
+
+### 11.3 Snapshots, events and exposure
+
+Treat pushes as prompts to reconcile rather than a standalone financial ledger. After reconnecting, log in and resubscribe, buffer updates arriving during recovery, query orders, fills and account state, then deduplicate and reconcile using identity and available event identifiers. Do not assume snapshots and events form a gap-free stream or treat query `height` as the original transaction's execution height.
+
+Persist the minimum query height of accepted execution evidence and reject older projections. Ordinary `openOrders` has no snapshot height, and independent reads do not guarantee one committed view. Pause additional exposure if evidence is insufficient; never invent a height. Internal consistent snapshots and execution proofs are not implied public API capabilities.
+
+Budget the entire side against positions, all live orders, cancel-pending orders, unknown placements/replacements and proposed new orders. An ordinary sell is not necessarily risk-reducing. Do not spend the same inventory or collateral headroom independently at every level. Stale prices, crossed books, disabled trading, mismatched account/market identity or unavailable funds must block new quotes. Cancel known risk orders where authorization and execution state permit, retaining unresolved records.
+
+### 11.4 Choose the next action by error class
+
+| Signal | Classification and response |
+|---|---|
+| `91` | Check API wallet authorization, master identity, signing field order and dynamic chain ID. Do not universally interpret it as missing funds or automatically call a faucet. |
+| `1160` | Guild orders and replacements must use `Alo`; correct offending legs and reevaluate before submitting. |
+| `203` / `204` | Check millisecond clock, nonce window and allocator. Resolve only the explicitly rejected request; retain other unknown requests. |
+| `205` / `action already pending` | Reconcile the original action; do not copy it with a new nonce. |
+| `97` | Reduce in-flight concurrency and prioritize recovery; retain existing request state. |
+| `PrecisionExceeded` / `BadDecimal` / tick / minimum-notional rejection | Correct precision, tick, step or notional. The single-status `PrecisionExceeded` response is not an ordinary per-leg array. |
+| `badAloPxRejected` / `oracleRejected` | Reread prices, book and trading state before repricing; do not automatically switch to a taker order. |
+| `perpMarginRejected` / `reduceOnlyRejected` / insufficient balance | Reread positions and funds, reduce size or adjust side; stop resubmitting the original size. |
+| System cancellation | Reconcile the self-trade, position, related-order or vault condition before refilling; do not book every disappearance as a fill. |
+| HTTP 429/503/5xx, timeout, disconnect, malformed reply | Reads may back off and retry. For writes, retain pending and recover by querying; HTTP status alone is not proof of nonexecution. |
+| `status:"err"` with mixed `committedResult`, `localCommitted` or a query-before-retry hint | Effects may already exist. Save the complete receipt and reconcile every leg instead of rejecting the whole batch locally. |
+| Unknown code or order state | Retain diagnostics, pause conflicting writes and seek support; do not infer success, termination or safe replay. |
+
+An explicit rejection without potentially effective results can end that request's pending state. Inspect `committedResult` and every leg before classifying it. A duplicate-nonce rejection applies to this submission, not proof of the original action's outcome. Follow sections 6–10 for field details and error scope. Log request identity, nonce, account/market, operation, oid/cloid, per-leg outcomes, observed height and phase durations; never log private keys or complete replayable signed requests.
+
+### 11.5 Restart, shutdown and monitoring
+
+On restart, verify original signer, account, endpoint, network and durable directory, recover unknown requests, then rebuild orders and risk state. Changing WS/REST, account or instance must not bypass pending. The demo's `recover` only queries and never replays `ACTION_FILE`.
+
+A continuous maker should stop new quotes, retain unknown requests, cancel known orders in its own management scope and verify outcomes before reporting cleanup complete. Exiting a process or closing WS does not cancel orders. This demo does not implement automatic cancellation on strategy shutdown; orders left by `trade` need explicit cancellation. Report incomplete cleanup if cancellation or queries fail; successful process exit is not zero account exposure.
+
+Monitor pending count/age, market/account data age, per-leg rejection reasons, rate limits, disconnects, remaining depth, inventory and unconfirmed risk-cancellation age. Measure submission → observed execution and observed execution → current visibility separately. Report unresolved requests and quoting downtime alongside successful-request latency so stalled work is visible.
 
 ## Appendix A: bin-ws Protobuf definitions
 
@@ -304,6 +371,8 @@ message Trade {
 ```
 
 ## Appendix B: signing test vectors
+
+Trading signature vectors below retain their original asset index and prices for offline verification; they are not BTC submission examples.
 
 
 These vectors were computed independently in Python and Go with matching results. All use the same test key:

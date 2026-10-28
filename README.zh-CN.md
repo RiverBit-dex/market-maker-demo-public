@@ -10,6 +10,8 @@ RiverBit 给做市商的通用做市参考 demo(Go)。它演示如何用 API wal
 
 协议、签名、字段和错误码以 [`docs/guild-market-maker-api.md`](docs/guild-market-maker-api.md) 为准;本文只写 demo 怎么用,不复述协议细节。
 
+开发持续做市程序前，请阅读[执行与对账建议](docs/guild-market-maker-api.md#11-持续做市的执行与对账建议)：请求/订单状态分离、部分成交、撤单竞争、改单、风险预算、错误处理及退出清理。
+
 ## 功能
 
 - 行情:`l2` 增量盘口(默认,本地回放后打印买一卖一)或 `l2Book` 全量盘口、`trades`、`candle`(1m)。
@@ -68,10 +70,10 @@ go run ./cmd/market-maker-demo
 
 ### (b) 主账户 REST 下单
 
-先把 `examples/rbt-batch-order.sample.json` 复制一份,按实时盘口改价格和数量(见下文"action 文件格式"),再执行:
+先把 `examples/btc-batch-order.sample.json` 复制一份,按实时盘口改价格和数量(见下文"action 文件格式"),再执行:
 
 ```sh
-cp examples/rbt-batch-order.sample.json my-order.json
+cp examples/btc-batch-order.sample.json my-order.json
 # Edit the price and size in my-order.json
 ORDER_TRANSPORT=rest \
 ACTION_FILE=my-order.json \
@@ -80,7 +82,7 @@ go run ./cmd/market-maker-demo trade
 
 会看到:
 
-- `Verified RBT asset: index=... size_decimals=... max_leverage=...`:已校验 action 里的资产索引与 `COIN` 一致。
+- `Verified BTC asset: index=... size_decimals=... max_leverage=...`:已校验 action 里的资产索引与 `COIN` 一致。
 - `trading account resolved via POST /info userRole ...`:`signer_role=agent` 时交易账户为所属主账户。
 - `Submitting action 1/1 (*hlexchange.Place) for <账户> via REST (...)`。
 - `Resolved order IDs: [...] (execution height=...; statuses=[...])`:本次分配到的 oid。
@@ -124,10 +126,10 @@ go run ./cmd/market-maker-demo trade
    {
      "type": "order",
      "orders": [
-       {"a": 0, "b": true, "p": "100.0000", "s": "0.15", "r": false,
+       {"a": 1, "b": true, "p": "80000", "s": "0.001", "r": false,
         "t": {"limit": {"tif": "Alo"}},
         "c": "0x11111111111111111111111111111111"},
-       {"a": 0, "b": true, "p": "99.0000", "s": "0.15", "r": false,
+       {"a": 1, "b": true, "p": "79900", "s": "0.001", "r": false,
         "t": {"limit": {"tif": "Alo"}},
         "c": "0x22222222222222222222222222222222"}
      ],
@@ -145,7 +147,7 @@ go run ./cmd/market-maker-demo trade
 
    ```json
    {"type":"batchModify","modifies":[
-     {"oid": <oid1>, "order": {"a": 0, "b": true, "p": "99.5000", "s": "0.15", "r": false,
+     {"oid": <oid1>, "order": {"a": 1, "b": true, "p": "79950", "s": "0.001", "r": false,
       "t": {"limit": {"tif": "Alo"}}, "c": "0x11111111111111111111111111111111"}}
    ]}
    ```
@@ -159,7 +161,7 @@ go run ./cmd/market-maker-demo trade
 4. 按 oid 撤第二笔，文件 `flow-cancel.json`:
 
    ```json
-   {"type":"cancel","cancels":[{"a":0,"o":<oid2>}]}
+   {"type":"cancel","cancels":[{"a":1,"o":<oid2>}]}
    ```
 
    ```sh
@@ -169,7 +171,7 @@ go run ./cmd/market-maker-demo trade
 5. 按 cloid 撤第一笔(改单后的那笔),文件 `flow-cancel-cloid.json`:
 
    ```json
-   {"type":"cancelByCloid","cancels":[{"asset":0,"cloid":"0x11111111111111111111111111111111"}]}
+   {"type":"cancelByCloid","cancels":[{"asset":1,"cloid":"0x11111111111111111111111111111111"}]}
    ```
 
    ```sh
@@ -201,13 +203,15 @@ go run ./cmd/market-maker-demo recover
 
 恢复范围：本 demo 提供订单证据恢复；末尾的 `openOrders` 没有快照高度，不能证明它与逐笔证据或账户余额属于同一时刻。内部 maker 额外校验完整签名交易的终局证明、跨过读水位的完整新鲜订单/账户快照，并提供旧 journal 查找提示及受控迁移。demo 未包含这些能力，不会仅凭交易 hash、区块高度、nonce 或目标订单已结束来释放缺证据的请求，也不会根据订单推送推算库存或资金。
 
+BTC 示例使用 `a`/`asset` = `1`、数量 `0.001` 和整数价格作为格式参考；提交前必须重新查询 `metaAndAssetCtxs` 并按实时盘口调整价格。
+
 ## action 文件格式
 
 `ACTION_FILE` 的每个文件是一个 JSON action,`type` 支持 `order`、`cancel`、`cancelByCloid`、`modify`、`batchModify`。字段含义见接入手册第 6 到 8 节。`examples/` 下的文件:
 
 | 文件 | 用途 |
 |---|---|
-| `examples/rbt-batch-order.sample.json` | 批量下单:一买一卖两笔 `Alo` 限价单 |
+| `examples/btc-batch-order.sample.json` | 批量下单:一买一卖两笔 `Alo` 限价单 |
 | `examples/batch-modify.sample.json` | 批量改单(`batchModify`,推荐):按 `oid` 改两笔 |
 | `examples/cancel-by-cloid.sample.json` | 按 `cloid` 撤单 |
 
@@ -229,7 +233,7 @@ go run ./cmd/market-maker-demo recover
 | `BIN_WS_LOGIN_HOST` | `pre-api.riverbit.io` | 登录消息里签名的 `host:`,必须等于服务端配置的对外域名 |
 | `API_GATEWAY_URL` | `https://pre-api.riverbit.io` | HTTP 基址,请求 `POST <基址>/info`;`rest` 模式还请求 `POST <基址>/exchange` |
 | `ORDER_TRANSPORT` | `ws` | `trade` / `recover` 的传输方式:`ws` 或 `rest`,其他值启动即报错 |
-| `COIN` | `RBT` | 市场名称,用于查资产索引并校验 action |
+| `COIN` | `BTC` | 市场名称,用于查资产索引并校验 action |
 | `BOOK_STREAM` | `l2` | 盘口订阅:`l2`(增量)或 `l2Book`(全量),其他值启动即报错 |
 | `GUILD_VAULT_ADDRESS` | 空 | 金库地址。设置后代金库交易,行情模式下订单事件订阅金库 |
 | `KEY_FILE` | `key` | API wallet 私钥文件(登录和交易签名都用) |
